@@ -6,29 +6,28 @@ jobs:
   build:
     runs-on: windows-2019
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - name: 安装 CUDA 11.8（P100 专用）
-        run: choco install cuda --version=11.8.0 -y && refreshenv
-        shell: pwsh
+      - name: 安装 CUDA 11.8
+        uses: Jimver/cuda-toolkit@v0.2.21
+        with:
+          cuda: '11.8.0'
 
       - name: 安装 CMake
-        run: choco install cmake -y && refreshenv
-        shell: pwsh
+        uses: lukka/get-cmake@latest
 
       - name: CMake 构建（静态 + P100 专属）
         run: |
           cmake -B build -S . `
-          -DLLAMA_CUDA=ON `
-          -DCMAKE_CUDA_ARCHITECTURES=60 `
-          -DCMAKE_BUILD_TYPE=Release `
-          -DBUILD_SHARED_LIBS=OFF `
-          -DLLAMA_STATIC=ON `
-          -DLLAMA_BUILD_SERVER=ON
+            -DLLAMA_CUBLAS=ON `
+            -DCMAKE_CUDA_ARCHITECTURES=60 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DLLAMA_BUILD_SERVER=ON
         shell: pwsh
 
       - name: 编译
-        run: cmake --build build --config Release -j4
+        run: cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS
         shell: pwsh
 
       - name: 打包静态 exe
@@ -36,7 +35,7 @@ jobs:
           mkdir dist
           copy build\bin\Release\*.exe dist\
           copy convert-hf-to-gguf.py dist\
-          Compress-Archive -Path dist\* -Destination llama-p100-win2019-cuda118-static.zip
+          Compress-Archive -Path dist\* -DestinationPath llama-p100-win2019-cuda118-static.zip
         shell: pwsh
 
       - name: 上传产物
