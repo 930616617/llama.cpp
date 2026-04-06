@@ -1,4 +1,4 @@
-name: Windows Server2019 P100 静态编译 (CUDA12.2 sm60)
+name: Windows Server2019 P100 静态编译 (CUDA11.8 sm60)
 on:
   workflow_dispatch:
 
@@ -8,16 +8,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: 安装 CUDA 12.2
-        run: choco install cuda --version=12.2.0 -y && refreshenv
+      - name: 安装 CUDA 11.8（P100 专用）
+        run: choco install cuda --version=11.8.0 -y && refreshenv
         shell: pwsh
 
       - name: 安装 CMake
         run: choco install cmake -y && refreshenv
         shell: pwsh
 
-      # 静态编译 + P100专属配置
-      - name: CMake 构建
+      - name: CMake 构建（静态 + P100 专属）
         run: |
           cmake -B build -S . `
           -DLLAMA_CUDA=ON `
@@ -32,17 +31,16 @@ jobs:
         run: cmake --build build --config Release -j4
         shell: pwsh
 
-      # 打包静态exe（无任何依赖）
-      - name: 打包
+      - name: 打包静态 exe
         run: |
           mkdir dist
           copy build\bin\Release\*.exe dist\
           copy convert-hf-to-gguf.py dist\
-          Compress-Archive -Path dist\* -Destination llama-p100-win2019-static.zip
+          Compress-Archive -Path dist\* -Destination llama-p100-win2019-cuda118-static.zip
         shell: pwsh
 
-      - name: 上传文件
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: llama-p100-win2019-static
-          path: llama-p100-win2019-static.zip
+          name: llama-p100-win2019-cuda118-static
+          path: llama-p100-win2019-cuda118-static.zip
