@@ -1,44 +1,74 @@
-name: 编译 P100 专用 llama.cpp (CUDA 6.0)
+name: 编译 Windows Server 2019 专属 P100 用 llama.cpp (CUDA 11.8 sm_60)
 
 # 仅手动触发，不会自动运行
 on:
   workflow_dispatch:
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest  # 编译Linux版本，适配P100服务器
+  build-windows:
+    runs-on: windows-2019  # 和你的系统完全一致，保证兼容性
     steps:
-      # 1. 拉取最新llama.cpp代码
+      # 1. 拉取最新llama.cpp代码（解决Node.js警告）
       - name: 拉取代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      # 2. 安装CUDA编译环境
-      - name: 安装CUDA工具链
+      # 2. 安装 CUDA 11.8（最后一个支持P100的Windows CUDA版本）
+      - name: 安装 CUDA 11.8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y nvidia-cuda-toolkit build-essential
+          choco install cuda --version=11.8.0 -y
+          refreshenv
+        shell: pwsh
 
-      # 3. 【关键】P100专属编译（CUDA算力6.0，绝对不能改！）
+      # 3. 安装 CMake（编译必备）
+      - name: 安装 CMake
+        run: |
+          choco install cmake -y
+          refreshenv
+        shell: pwsh
+
+      # 4. 安装 Visual Studio 2022 生成工具（MSVC C++编译器）
+      - name: 安装 VS 生成工具
+        run: |
+          choco install visualstudio2022-buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart" -y
+          refreshenv
+        shell: pwsh
+
+      # 5. 【核心】CMake配置（P100专属参数，绝对不能改！）
+      - name: CMake 配置
+        run: |
+          cmake -B build -S . `
+          -DLLAMA_CUDA=ON `
+          -DCMAKE_CUDA_ARCHITECTURES=60 ` # 强制适配P100 sm_60架构
+          -DCMAKE_BUILD_TYPE=Release `
+          -DLLAMA_BUILD_EXAMPLES=ON `
+          -DLLAMA_BUILD_SERVER=ON
+        shell: pwsh
+
+      # 6. 编译llama.cpp（Release版本，速度最优）
       - name: 编译llama.cpp
-        run: |
-          make clean
-          LLAMA_CUDA=1 LLAMA_CUDA_ARCH=60 make -j4
+        run: cmake --build build --config Release -j4
+        shell: pwsh
 
-      # 4. 打包编译好的可执行文件
-      - name: 打包产物
+      # 7. 打包编译产物（Windows原生exe+脚本）
+      - name: 打包文件
         run: |
-          tar -czvf llama-p100-linux-cuda60.tar.gz \
-          main \
-          quantize \
-          convert-hf-to-gguf.py \
-          gguf-split \
-          gguf-quantize \
-          gguf-convert \
-          libllama.so
+          # 创建输出目录
+          New-Item -ItemType Directory -Force -Path llama-p100-windows
+          # 复制核心可执行文件
+          Copy-Item build\bin\Release\main.exe .\llama-p100-windows\
+          Copy-Item build\bin\Release\quantize.exe .\llama-p100-windows\
+          Copy-Item build\bin\Release\llama-cli.exe .\llama-p100-windows\
+          Copy-Item build\bin\Release\llama-server.exe .\llama-p100-windows\
+          # 复制模型转换脚本
+          Copy-Item convert-hf-to-gguf.py .\llama-p100-windows\
+          Copy-Item gguf-*.py .\llama-p100-windows\
+          # 打包成Windows原生zip
+          Compress-Archive -Path .\llama-p100-windows\* -DestinationPath .\llama-p100-windows-cuda118-sm60.zip -Force
+        shell: pwsh
 
-      # 5. 上传可下载的压缩包
-      - name: 上传编译包
+      # 8. 上传可下载的编译包
+      - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
-          name: llama-p100-linux-cuda60
-          path: llama-p100-linux-cuda60.tar.gz
+          name: llama-p100-windows-cuda118-sm60
+          path: llama-p100-windows-cuda118-sm60.zip
