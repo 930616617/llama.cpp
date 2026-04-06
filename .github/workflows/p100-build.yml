@@ -1,0 +1,44 @@
+name: 编译 P100 专用 llama.cpp (CUDA 6.0)
+
+# 仅手动触发，不会自动运行
+on:
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest  # 编译Linux版本，适配P100服务器
+    steps:
+      # 1. 拉取最新llama.cpp代码
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      # 2. 安装CUDA编译环境
+      - name: 安装CUDA工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nvidia-cuda-toolkit build-essential
+
+      # 3. 【关键】P100专属编译（CUDA算力6.0，绝对不能改！）
+      - name: 编译llama.cpp
+        run: |
+          make clean
+          LLAMA_CUDA=1 LLAMA_CUDA_ARCH=60 make -j4
+
+      # 4. 打包编译好的可执行文件
+      - name: 打包产物
+        run: |
+          tar -czvf llama-p100-linux-cuda60.tar.gz \
+          main \
+          quantize \
+          convert-hf-to-gguf.py \
+          gguf-split \
+          gguf-quantize \
+          gguf-convert \
+          libllama.so
+
+      # 5. 上传可下载的压缩包
+      - name: 上传编译包
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-p100-linux-cuda60
+          path: llama-p100-linux-cuda60.tar.gz
