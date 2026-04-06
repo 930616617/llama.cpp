@@ -1,74 +1,48 @@
-name: 编译 Windows Server 2019 专属 P100 用 llama.cpp (CUDA 11.8 sm_60)
-
-# 仅手动触发，不会自动运行
+name: Windows Server2019 P100 静态编译 (CUDA12.2 sm60)
 on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
-    runs-on: windows-2019  # 和你的系统完全一致，保证兼容性
+  build:
+    runs-on: windows-2019
     steps:
-      # 1. 拉取最新llama.cpp代码（解决Node.js警告）
-      - name: 拉取代码
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      # 2. 安装 CUDA 11.8（最后一个支持P100的Windows CUDA版本）
-      - name: 安装 CUDA 11.8
-        run: |
-          choco install cuda --version=11.8.0 -y
-          refreshenv
+      - name: 安装 CUDA 12.2
+        run: choco install cuda --version=12.2.0 -y && refreshenv
         shell: pwsh
 
-      # 3. 安装 CMake（编译必备）
       - name: 安装 CMake
-        run: |
-          choco install cmake -y
-          refreshenv
+        run: choco install cmake -y && refreshenv
         shell: pwsh
 
-      # 4. 安装 Visual Studio 2022 生成工具（MSVC C++编译器）
-      - name: 安装 VS 生成工具
-        run: |
-          choco install visualstudio2022-buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart" -y
-          refreshenv
-        shell: pwsh
-
-      # 5. 【核心】CMake配置（P100专属参数，绝对不能改！）
-      - name: CMake 配置
+      # 静态编译 + P100专属配置
+      - name: CMake 构建
         run: |
           cmake -B build -S . `
           -DLLAMA_CUDA=ON `
-          -DCMAKE_CUDA_ARCHITECTURES=60 ` # 强制适配P100 sm_60架构
+          -DCMAKE_CUDA_ARCHITECTURES=60 `
           -DCMAKE_BUILD_TYPE=Release `
-          -DLLAMA_BUILD_EXAMPLES=ON `
+          -DBUILD_SHARED_LIBS=OFF `
+          -DLLAMA_STATIC=ON `
           -DLLAMA_BUILD_SERVER=ON
         shell: pwsh
 
-      # 6. 编译llama.cpp（Release版本，速度最优）
-      - name: 编译llama.cpp
+      - name: 编译
         run: cmake --build build --config Release -j4
         shell: pwsh
 
-      # 7. 打包编译产物（Windows原生exe+脚本）
-      - name: 打包文件
+      # 打包静态exe（无任何依赖）
+      - name: 打包
         run: |
-          # 创建输出目录
-          New-Item -ItemType Directory -Force -Path llama-p100-windows
-          # 复制核心可执行文件
-          Copy-Item build\bin\Release\main.exe .\llama-p100-windows\
-          Copy-Item build\bin\Release\quantize.exe .\llama-p100-windows\
-          Copy-Item build\bin\Release\llama-cli.exe .\llama-p100-windows\
-          Copy-Item build\bin\Release\llama-server.exe .\llama-p100-windows\
-          # 复制模型转换脚本
-          Copy-Item convert-hf-to-gguf.py .\llama-p100-windows\
-          Copy-Item gguf-*.py .\llama-p100-windows\
-          # 打包成Windows原生zip
-          Compress-Archive -Path .\llama-p100-windows\* -DestinationPath .\llama-p100-windows-cuda118-sm60.zip -Force
+          mkdir dist
+          copy build\bin\Release\*.exe dist\
+          copy convert-hf-to-gguf.py dist\
+          Compress-Archive -Path dist\* -Destination llama-p100-win2019-static.zip
         shell: pwsh
 
-      # 8. 上传可下载的编译包
-      - name: 上传编译产物
+      - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
-          name: llama-p100-windows-cuda118-sm60
-          path: llama-p100-windows-cuda118-sm60.zip
+          name: llama-p100-win2019-static
+          path: llama-p100-win2019-static.zip
